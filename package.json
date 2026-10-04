@@ -1,0 +1,10 @@
+{
+  "name": "clouddeployx-workspace",
+  "private": true,
+  "scripts": {
+    "dev": "pnpm --dir frontend dev",
+    "build": "pnpm --dir frontend build",
+    "preview": "pnpm --dir frontend preview",
+    "api": "pnpm --dir backend start"
+  }
+}
