@@ -1,4 +1,5 @@
 {
+  "title": "Cloud Deploy X",
   "description": "Streamline cloud-native application deployment and monitoring with an intuitive platform designed for developers to manage apps, track health, and oversee deployments.",
   "robots": {
     "index": false
