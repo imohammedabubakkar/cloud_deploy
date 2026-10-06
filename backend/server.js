@@ -419,7 +419,7 @@ app.post("/api/team", async (request, response, next) => {
     const payload = request.body || {};
     const usernameNormalized = normalize(payload.username);
     const emailNormalized = normalize(payload.email);
-    if (!payload.name || !usernameNormalized || !emailNormalized || !payload.passwordHash || !payload.deploymentAccess) {
+    if (!payload.name || !usernameNormalized || !emailNormalized || !payload.passwordHash || !payload.environment) {
       return response.status(400).json({ error: "Complete every required team member field." });
     }
     const member = {
@@ -456,6 +456,22 @@ app.post("/api/team/login", async (request, response, next) => {
     );
     if (!member) return response.status(401).json({ error: "Invalid team username or password." });
     response.json({ member: withoutInternalFields(member) });
+  } catch (error) {
+    next(error);
+  }
+});
+
+app.put("/api/team/:username/access", async (request, response, next) => {
+  try {
+    const database = await databasePromise;
+    const { deploymentAccess, environment } = request.body || {};
+    if (!deploymentAccess || !environment) return response.status(400).json({ error: "Application and environment are required." });
+    const result = await database.collection("teamMembers").updateOne(
+      { usernameNormalized: normalize(request.params.username), environment, removedAt: { $exists: false } },
+      { $set: { deploymentAccess: String(deploymentAccess), updatedAt: new Date().toISOString() } },
+    );
+    if (!result.matchedCount) return response.status(404).json({ error: "Team member not found in this environment." });
+    response.json({ success: true });
   } catch (error) {
     next(error);
   }

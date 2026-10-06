@@ -189,6 +189,21 @@ export const teamApi = {
     rememberTeamIdentity(member);
     return result;
   },
+  async assignAccess(username: string, deploymentAccess: string, environment: string) {
+    try {
+      return await request<{ success: boolean }>(`/team/${encodeURIComponent(username)}/access`, {
+        method: "PUT",
+        body: JSON.stringify({ deploymentAccess, environment }),
+      });
+    } catch (error) {
+      if (!isUnavailable(error)) throw error;
+      const members = readLocal<any>("clouddeployx-team");
+      const member = members.find(item => item.username === username);
+      if (!member) throw error;
+      writeLocal("clouddeployx-team", members.map(item => item.username === username ? { ...item, deploymentAccess, environment } : item));
+      return { success: true };
+    }
+  },
   async login(identifier: string, passwordHash: string) {
     try {
       return await request<{ member: Record<string, string> }>("/team/login", {
