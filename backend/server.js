@@ -6,6 +6,10 @@ import { MongoClient, MongoServerError } from "mongodb";
 const port = Number(process.env.PORT || 8787);
 const mongoUri = process.env.MONGODB_URI;
 const databaseName = process.env.MONGODB_DATABASE || "clouddeployx";
+const log = (level, message, details = "") => {
+  const suffix = details ? ` ${details}` : "";
+  console[level](`[${new Date().toISOString()}] [${level.toUpperCase()}] ${message}${suffix}`);
+};
 
 if (!mongoUri) {
   console.error("MONGODB_URI is required.");
@@ -17,7 +21,9 @@ const client = new MongoClient(mongoUri, {
   serverSelectionTimeoutMS: 10000,
 });
 
+log("info", `Connecting to MongoDB database "${databaseName}"...`);
 const databasePromise = client.connect().then(async () => {
+  log("info", "MongoDB Atlas connection established.");
   const database = client.db(databaseName);
   await Promise.all([
     database.collection("users").createIndex({ usernameNormalized: 1 }, { unique: true }),
@@ -25,7 +31,11 @@ const databasePromise = client.connect().then(async () => {
     database.collection("teamMembers").createIndex({ usernameNormalized: 1 }, { unique: true }),
     database.collection("teamMembers").createIndex({ emailNormalized: 1 }, { unique: true }),
   ]);
+  log("info", "MongoDB indexes are ready.");
   return database;
+}).catch(error => {
+  log("error", "MongoDB connection or initialization failed.", `(${error?.name || "Error"}${error?.code ? `, code ${error.code}` : ""})`);
+  throw error;
 });
 
 const app = express();
@@ -35,6 +45,13 @@ app.use(cors({
     : true,
 }));
 app.use(express.json({ limit: "1mb" }));
+app.use((request, response, next) => {
+  const startedAt = Date.now();
+  response.on("finish", () => {
+    log("info", `${request.method} ${request.path} ${response.statusCode} ${Date.now() - startedAt}ms`);
+  });
+  next();
+});
 
 const normalize = value => String(value || "").trim().toLowerCase();
 const withoutInternalFields = ({ _id, usernameNormalized, emailNormalized, passwordHash, ...record }) => record;
@@ -246,7 +263,7 @@ app.delete("/api/team/:username", async (request, response, next) => {
 });
 
 app.use((error, _request, response, _next) => {
-  console.error(error instanceof Error ? error.message : "Unknown server error");
+  log("error", error instanceof Error ? error.message.replaceAll(mongoUri, "[MongoDB URI redacted]") : "Unknown server error");
   response.status(500).json({ error: "Database service unavailable." });
 });
 
@@ -255,12 +272,14 @@ export default app;
 const server = process.env.VERCEL
   ? null
   : app.listen(port, () => {
-      console.log(`CloudDeployX API listening on port ${port}.`);
+      log("info", `CloudDeployX API listening on port ${port}.`);
     });
 
 const shutdown = async () => {
+  log("info", "Shutting down backend...");
   server?.close();
   await client.close();
+  log("info", "Backend shutdown complete.");
   process.exit(0);
 };
 
