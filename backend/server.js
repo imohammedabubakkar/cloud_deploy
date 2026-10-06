@@ -20,6 +20,30 @@ if (!mongoUri) {
 const client = new MongoClient(mongoUri, {
   connectTimeoutMS: 10000,
   serverSelectionTimeoutMS: 10000,
+  monitorCommands: true,
+});
+
+const loggedMongoCommands = new Set(["find", "aggregate", "insert", "update", "delete", "findAndModify", "createIndexes"]);
+const activeMongoOperations = new Map();
+client.on("commandStarted", event => {
+  if (!loggedMongoCommands.has(event.commandName)) return;
+  const collection = event.command[event.commandName];
+  if (typeof collection !== "string") return;
+  const operation = `MongoDB ${event.commandName.toUpperCase()} ${event.databaseName}.${collection}`;
+  activeMongoOperations.set(event.requestId, operation);
+  log("info", `--> ${operation}`);
+});
+client.on("commandSucceeded", event => {
+  const operation = activeMongoOperations.get(event.requestId);
+  if (!operation) return;
+  activeMongoOperations.delete(event.requestId);
+  log("info", `<-- ${operation} OK (${event.duration}ms)`);
+});
+client.on("commandFailed", event => {
+  const operation = activeMongoOperations.get(event.requestId);
+  if (!operation) return;
+  activeMongoOperations.delete(event.requestId);
+  log("error", `<-- ${operation} failed (${event.duration}ms)`);
 });
 
 log("info", `Connecting to MongoDB database "${databaseName}"...`);
