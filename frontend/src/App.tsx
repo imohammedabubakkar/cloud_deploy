@@ -64,7 +64,7 @@ function Avatar({ initials = "MK", small = false }: { initials?: string; small?:
 }
 
 function Logo({ compact = false }: { compact?: boolean }) {
-  return <div className="logo"><span className="logo-mark"><Icon name="cloud" size={20}/></span>{!compact && <span>CloudDeploy<span>X</span></span>}</div>;
+  return <div className="logo"><span className="logo-mark"><img src="/clouddeployx-mark.svg" alt=""/></span>{!compact && <span>CloudDeploy<span>X</span></span>}</div>;
 }
 
 const nav = [
