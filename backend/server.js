@@ -7,6 +7,10 @@ import { MongoClient, MongoServerError } from "mongodb";
 const port = Number(process.env.PORT || 8787);
 const mongoUri = process.env.MONGODB_URI;
 const databaseName = process.env.MONGODB_DATABASE || "clouddeployx";
+const mongoHost = (() => {
+  try { return new URL(mongoUri).hostname; } catch { return "MongoDB Atlas"; }
+})();
+let logMongoCommands = false;
 const log = (level, message, details = "") => {
   const suffix = details ? ` ${details}` : "";
   console[level](`[${new Date().toISOString()}] [${level.toUpperCase()}] ${message}${suffix}`);
@@ -26,6 +30,7 @@ const client = new MongoClient(mongoUri, {
 const loggedMongoCommands = new Set(["find", "aggregate", "insert", "update", "delete", "findAndModify", "createIndexes"]);
 const activeMongoOperations = new Map();
 client.on("commandStarted", event => {
+  if (!logMongoCommands) return;
   if (!loggedMongoCommands.has(event.commandName)) return;
   const collection = event.command[event.commandName];
   if (typeof collection !== "string") return;
@@ -46,9 +51,8 @@ client.on("commandFailed", event => {
   log("error", `<-- ${operation} failed (${event.duration}ms)`);
 });
 
-log("info", `Connecting to MongoDB database "${databaseName}"...`);
 const databasePromise = client.connect().then(async () => {
-  log("info", "MongoDB Atlas connection established.");
+  console.log(`[Database] MongoDB Connected: ${mongoHost}`);
   const database = client.db(databaseName);
   await Promise.all([
     database.collection("users").createIndex({ usernameNormalized: 1 }, { unique: true }),
@@ -67,10 +71,10 @@ const databasePromise = client.connect().then(async () => {
     { $setOnInsert: { name: "Abubakkar", username: adminUsername, usernameNormalized: adminUsername.toLowerCase(), passwordHash: adminPasswordHash, createdAt: new Date().toISOString() } },
     { upsert: true },
   );
-  log("info", "MongoDB indexes are ready.");
+  logMongoCommands = true;
   return database;
 }).catch(error => {
-  log("error", "MongoDB connection or initialization failed.", `(${error?.name || "Error"}${error?.code ? `, code ${error.code}` : ""})`);
+  log("error", `MongoDB connection to ${mongoHost} failed.`, `(${error?.name || "Error"}${error?.code ? `, code ${error.code}` : ""})`);
   throw error;
 });
 
@@ -493,11 +497,21 @@ app.use((error, _request, response, _next) => {
 
 export default app;
 
-const server = process.env.VERCEL
-  ? null
-  : app.listen(port, () => {
-      log("info", `CloudDeployX API listening on port ${port}.`);
+let server = null;
+if (!process.env.VERCEL) {
+  databasePromise.then(() => {
+    server = app.listen(port, () => {
+      const baseUrl = `http://localhost:${port}`;
+      console.log("==================================================");
+      console.log("🚀 CloudDeployX Backend API is running!");
+      console.log(`🌐 URL: ${baseUrl}`);
+      console.log(`💚 Health Check: ${baseUrl}/api/health`);
+      console.log("==================================================");
     });
+  }).catch(() => {
+    process.exitCode = 1;
+  });
+}
 
 const shutdown = async () => {
   log("info", "Shutting down backend...");

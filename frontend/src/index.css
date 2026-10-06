@@ -100,6 +100,11 @@ main { padding: 30px; max-width: 1600px; margin: 0 auto; }
 .dashboard-empty { margin-top: 16px; }
 .dashboard-empty .empty-state { min-height: 260px; }
 .added-summary { min-height: 90px; padding: 20px; display: flex; align-items: center; justify-content: space-between; gap: 20px; }
+.dashboard-app-list { display: grid; gap: 10px; padding: 0 20px 20px; }
+.dashboard-app-row { display: flex; align-items: center; gap: 14px; padding: 14px; border: 1px solid var(--border); border-radius: 10px; }
+.dashboard-app-info { display: grid; gap: 5px; min-width: 0; flex: 1; }
+.dashboard-app-info strong { color: var(--navy); font-size: 14px; }
+.dashboard-app-info small { overflow: hidden; color: var(--muted); font-size: 12px; text-overflow: ellipsis; white-space: nowrap; }
 .stat-grid-empty { grid-template-columns: repeat(4, 1fr); }
 .stat-grid { display: grid; grid-template-columns: repeat(5, 1fr); gap: 12px; }
 .stat-card { padding: 16px; position: relative; overflow: hidden; }
