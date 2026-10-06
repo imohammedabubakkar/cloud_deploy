@@ -100,6 +100,12 @@ export const accountApi = {
       return { user };
     }
   },
+  async changePassword(username: string, currentPasswordHash: string, nextPasswordHash: string) {
+    return request<{ success: boolean }>(`/users/${encodeURIComponent(username)}/password`, {
+      method: "PATCH",
+      body: JSON.stringify({ currentPasswordHash, nextPasswordHash }),
+    });
+  },
   async remove(username: string) {
     try {
       return await request<{ success: boolean }>(`/users/${encodeURIComponent(username)}`, {
@@ -111,6 +117,21 @@ export const accountApi = {
       writeLocal("clouddeployx-users", accounts.filter(item => item.username !== username));
       return { success: true };
     }
+  },
+};
+
+export const adminApi = {
+  async login(identifier: string, passwordHash: string) {
+    return request<{ admin: { name: string; username: string } }>("/admin/login", {
+      method: "POST",
+      body: JSON.stringify({ identifier, passwordHash }),
+    });
+  },
+  async changePassword(username: string, currentPasswordHash: string, nextPasswordHash: string) {
+    return request<{ success: boolean }>(`/admin/${encodeURIComponent(username)}/password`, {
+      method: "PATCH",
+      body: JSON.stringify({ currentPasswordHash, nextPasswordHash }),
+    });
   },
 };
 
@@ -188,6 +209,12 @@ export const teamApi = {
       return { member: updated };
     }
   },
+  async changePassword(username: string, currentPasswordHash: string, nextPasswordHash: string) {
+    return request<{ success: boolean }>(`/team/${encodeURIComponent(username)}/password`, {
+      method: "PATCH",
+      body: JSON.stringify({ currentPasswordHash, nextPasswordHash }),
+    });
+  },
   async remove(username: string) {
     try {
       return await request<{ success: boolean }>(`/team/${encodeURIComponent(username)}`, {
@@ -199,5 +226,56 @@ export const teamApi = {
       writeLocal("clouddeployx-team", members.filter(item => item.username !== username));
       return { success: true };
     }
+  },
+};
+
+export const applicationApi = {
+  async list() {
+    return request<{ applications: Array<Record<string, unknown>> }>("/applications");
+  },
+  async create(application: Record<string, unknown>) {
+    return request<{ application: Record<string, unknown> }>("/applications", {
+      method: "POST",
+      body: JSON.stringify(application),
+    });
+  },
+  async update(id: string, application: Record<string, unknown>) {
+    return request<{ success: boolean }>(`/applications/${encodeURIComponent(id)}`, {
+      method: "PUT",
+      body: JSON.stringify(application),
+    });
+  },
+  async remove(id: string) {
+    return request<{ success: boolean }>(`/applications/${encodeURIComponent(id)}`, { method: "DELETE" });
+  },
+};
+
+export const deploymentApi = {
+  async list() {
+    return request<{ deployments: Array<Record<string, unknown>> }>("/deployments");
+  },
+  async create(deployment: Record<string, unknown>) {
+    return request<{ deployment: Record<string, unknown> }>("/deployments", {
+      method: "POST",
+      body: JSON.stringify(deployment),
+    });
+  },
+  async update(id: string, fields: Record<string, unknown>) {
+    return request<{ success: boolean }>(`/deployments/${encodeURIComponent(id)}`, {
+      method: "PATCH",
+      body: JSON.stringify(fields),
+    });
+  },
+};
+
+export const settingsApi = {
+  async list(username: string) {
+    return request<{ settings: Record<string, unknown> }>(`/settings/${encodeURIComponent(username)}`);
+  },
+  async save(username: string, key: string, value: unknown) {
+    return request<{ success: boolean }>(`/settings/${encodeURIComponent(username)}`, {
+      method: "PUT",
+      body: JSON.stringify({ key, value }),
+    });
   },
 };

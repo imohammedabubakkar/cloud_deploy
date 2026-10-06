@@ -1,6 +1,7 @@
 import "dotenv/config";
 import cors from "cors";
 import express from "express";
+import { createHash } from "node:crypto";
 import { MongoClient, MongoServerError } from "mongodb";
 
 const port = Number(process.env.PORT || 8787);
@@ -30,7 +31,18 @@ const databasePromise = client.connect().then(async () => {
     database.collection("users").createIndex({ emailNormalized: 1 }, { unique: true }),
     database.collection("teamMembers").createIndex({ usernameNormalized: 1 }, { unique: true }),
     database.collection("teamMembers").createIndex({ emailNormalized: 1 }, { unique: true }),
+    database.collection("applications").createIndex({ id: 1 }, { unique: true }),
+    database.collection("deployments").createIndex({ id: 1 }, { unique: true }),
+    database.collection("workspaceSettings").createIndex({ username: 1 }, { unique: true }),
+    database.collection("admins").createIndex({ usernameNormalized: 1 }, { unique: true }),
   ]);
+  const adminUsername = (process.env.ADMIN_DEFAULT_USERNAME || "abubakkar").trim();
+  const adminPasswordHash = createHash("sha256").update(process.env.ADMIN_DEFAULT_PASSWORD || "10092004").digest("hex");
+  await database.collection("admins").updateOne(
+    { usernameNormalized: adminUsername.toLowerCase() },
+    { $setOnInsert: { name: "Abubakkar", username: adminUsername, usernameNormalized: adminUsername.toLowerCase(), passwordHash: adminPasswordHash, createdAt: new Date().toISOString() } },
+    { upsert: true },
+  );
   log("info", "MongoDB indexes are ready.");
   return database;
 }).catch(error => {
@@ -140,6 +152,52 @@ app.post("/api/users/login", async (request, response, next) => {
   }
 });
 
+app.patch("/api/users/:username/password", async (request, response, next) => {
+  try {
+    const database = await databasePromise;
+    const { currentPasswordHash, nextPasswordHash } = request.body || {};
+    if (!currentPasswordHash || !nextPasswordHash) return response.status(400).json({ error: "Current and new passwords are required." });
+    const result = await database.collection("users").updateOne(
+      { usernameNormalized: normalize(request.params.username), passwordHash: currentPasswordHash },
+      { $set: { passwordHash: nextPasswordHash, passwordUpdatedAt: new Date().toISOString() } },
+    );
+    if (!result.matchedCount) return response.status(401).json({ error: "Current password is incorrect." });
+    response.json({ success: true });
+  } catch (error) {
+    next(error);
+  }
+});
+
+app.post("/api/admin/login", async (request, response, next) => {
+  try {
+    const database = await databasePromise;
+    const admin = await database.collection("admins").findOne({
+      usernameNormalized: normalize(request.body?.identifier),
+      passwordHash: request.body?.passwordHash,
+    });
+    if (!admin) return response.status(401).json({ error: "Invalid administrator username or password." });
+    response.json({ admin: withoutInternalFields(admin) });
+  } catch (error) {
+    next(error);
+  }
+});
+
+app.patch("/api/admin/:username/password", async (request, response, next) => {
+  try {
+    const database = await databasePromise;
+    const { currentPasswordHash, nextPasswordHash } = request.body || {};
+    if (!currentPasswordHash || !nextPasswordHash) return response.status(400).json({ error: "Current and new passwords are required." });
+    const result = await database.collection("admins").updateOne(
+      { usernameNormalized: normalize(request.params.username), passwordHash: currentPasswordHash },
+      { $set: { passwordHash: nextPasswordHash, passwordUpdatedAt: new Date().toISOString() } },
+    );
+    if (!result.matchedCount) return response.status(401).json({ error: "Current password is incorrect." });
+    response.json({ success: true });
+  } catch (error) {
+    next(error);
+  }
+});
+
 app.delete("/api/users/:username", async (request, response, next) => {
   try {
     const database = await databasePromise;
@@ -185,6 +243,129 @@ app.post("/api/activity", async (request, response, next) => {
     response.status(201).json({
       event: { ...event, id: String(result.insertedId), timestamp: event.timestamp.toISOString() },
     });
+  } catch (error) {
+    next(error);
+  }
+});
+
+app.get("/api/applications", async (_request, response, next) => {
+  try {
+    const database = await databasePromise;
+    const applications = await database.collection("applications").find({}).sort({ createdAt: -1 }).toArray();
+    response.json({ applications: applications.map(({ _id, ...application }) => application) });
+  } catch (error) {
+    next(error);
+  }
+});
+
+app.post("/api/applications", async (request, response, next) => {
+  try {
+    const database = await databasePromise;
+    const payload = request.body || {};
+    if (!payload.id || !payload.name || !payload.ownerUsername) {
+      return response.status(400).json({ error: "Application ID, name, and owner are required." });
+    }
+    const application = { ...payload, createdAt: payload.createdAt || new Date().toISOString() };
+    await database.collection("applications").insertOne(application);
+    response.status(201).json({ application });
+  } catch (error) {
+    if (error instanceof MongoServerError && error.code === 11000) {
+      return response.status(409).json({ error: "This application has already been saved." });
+    }
+    next(error);
+  }
+});
+
+app.put("/api/applications/:id", async (request, response, next) => {
+  try {
+    const database = await databasePromise;
+    const { _id, ...payload } = request.body || {};
+    const result = await database.collection("applications").updateOne(
+      { id: request.params.id },
+      { $set: { ...payload, id: request.params.id, updatedAt: new Date().toISOString() } },
+    );
+    if (!result.matchedCount) return response.status(404).json({ error: "Application not found." });
+    response.json({ success: true });
+  } catch (error) {
+    next(error);
+  }
+});
+
+app.delete("/api/applications/:id", async (request, response, next) => {
+  try {
+    const database = await databasePromise;
+    const result = await database.collection("applications").deleteOne({ id: request.params.id });
+    if (!result.deletedCount) return response.status(404).json({ error: "Application not found." });
+    await database.collection("deployments").deleteMany({ applicationId: request.params.id });
+    response.json({ success: true });
+  } catch (error) {
+    next(error);
+  }
+});
+
+app.get("/api/deployments", async (_request, response, next) => {
+  try {
+    const database = await databasePromise;
+    const deployments = await database.collection("deployments").find({}).sort({ createdAt: -1 }).toArray();
+    response.json({ deployments: deployments.map(({ _id, ...deployment }) => deployment) });
+  } catch (error) {
+    next(error);
+  }
+});
+
+app.post("/api/deployments", async (request, response, next) => {
+  try {
+    const database = await databasePromise;
+    const payload = request.body || {};
+    if (!payload.id || !payload.applicationId || !payload.applicationName || !payload.ownerUsername) {
+      return response.status(400).json({ error: "Deployment ID, application, and owner are required." });
+    }
+    const deployment = { ...payload, createdAt: payload.createdAt || new Date().toISOString() };
+    await database.collection("deployments").insertOne(deployment);
+    response.status(201).json({ deployment });
+  } catch (error) {
+    next(error);
+  }
+});
+
+app.patch("/api/deployments/:id", async (request, response, next) => {
+  try {
+    const database = await databasePromise;
+    const { status, completedAt, duration, version } = request.body || {};
+    const fields = Object.fromEntries(Object.entries({ status, completedAt, duration, version }).filter(([, value]) => value !== undefined));
+    const result = await database.collection("deployments").updateOne(
+      { id: request.params.id },
+      { $set: { ...fields, updatedAt: new Date().toISOString() } },
+    );
+    if (!result.matchedCount) return response.status(404).json({ error: "Deployment not found." });
+    response.json({ success: true });
+  } catch (error) {
+    next(error);
+  }
+});
+
+app.get("/api/settings/:username", async (request, response, next) => {
+  try {
+    const database = await databasePromise;
+    const record = await database.collection("workspaceSettings").findOne({ username: normalize(request.params.username) });
+    response.json({ settings: record?.settings || {} });
+  } catch (error) {
+    next(error);
+  }
+});
+
+app.put("/api/settings/:username", async (request, response, next) => {
+  try {
+    const database = await databasePromise;
+    const { key, value } = request.body || {};
+    const allowedKeys = new Set(["general", "security", "environment", "notifications", "apiKeys"]);
+    if (!allowedKeys.has(key)) return response.status(400).json({ error: "Unknown workspace setting." });
+    await database.collection("workspaceSettings").updateOne(
+      { username: normalize(request.params.username) },
+      { $set: { [`settings.${key}`]: value, updatedAt: new Date().toISOString() }, $setOnInsert: { username: normalize(request.params.username) } },
+      { upsert: true },
+    );
+    response.json({ success: true });
   } catch (error) {
     next(error);
   }
@@ -246,6 +427,22 @@ app.post("/api/team/login", async (request, response, next) => {
     );
     if (!member) return response.status(401).json({ error: "Invalid team username or password." });
     response.json({ member: withoutInternalFields(member) });
+  } catch (error) {
+    next(error);
+  }
+});
+
+app.patch("/api/team/:username/password", async (request, response, next) => {
+  try {
+    const database = await databasePromise;
+    const { currentPasswordHash, nextPasswordHash } = request.body || {};
+    if (!currentPasswordHash || !nextPasswordHash) return response.status(400).json({ error: "Current and new passwords are required." });
+    const result = await database.collection("teamMembers").updateOne(
+      { usernameNormalized: normalize(request.params.username), passwordHash: currentPasswordHash, removedAt: { $exists: false } },
+      { $set: { passwordHash: nextPasswordHash, passwordUpdatedAt: new Date().toISOString() } },
+    );
+    if (!result.matchedCount) return response.status(401).json({ error: "Current password is incorrect." });
+    response.json({ success: true });
   } catch (error) {
     next(error);
   }
