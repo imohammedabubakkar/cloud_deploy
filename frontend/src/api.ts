@@ -1,4 +1,12 @@
-const baseUrl = (import.meta.env.VITE_API_URL || "http://localhost:8787/api").replace(/\/$/, "");
+const productionApiUrl = "https://cloud-deploy-nse2.onrender.com/api";
+const localApiUrl = "http://localhost:8787/api";
+const configuredApiUrl = import.meta.env.VITE_API_URL?.trim();
+const pointsToLocalhost = (url: string) => /^https?:\/\/(localhost|127\.0\.0\.1)(:\d+)?(?:\/|$)/i.test(url);
+const defaultApiUrl = import.meta.env.PROD ? productionApiUrl : localApiUrl;
+const selectedApiUrl = import.meta.env.PROD && configuredApiUrl && pointsToLocalhost(configuredApiUrl)
+  ? productionApiUrl
+  : configuredApiUrl || defaultApiUrl;
+const baseUrl = selectedApiUrl.replace(/\/$/, "");
 
 async function request<T>(path: string, options?: RequestInit): Promise<T> {
   try {
