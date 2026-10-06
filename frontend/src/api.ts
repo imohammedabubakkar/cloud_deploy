@@ -13,8 +13,8 @@ async function request<T>(path: string, options?: RequestInit): Promise<T> {
     if (!response.ok) throw new Error(data.error || data.message || "Unable to complete the database request.");
     return data;
   } catch (error) {
-    if (error instanceof Error && !["Failed to fetch", "Database service unavailable."].includes(error.message)) throw error;
-    throw new Error("DATABASE_SERVICE_UNAVAILABLE");
+    if (error instanceof Error && error.message !== "Failed to fetch") throw error;
+    throw new Error(`Cannot reach the backend at ${baseUrl}. Start it with "npm run dev" from the backend folder.`);
   }
 }
 
@@ -69,23 +69,10 @@ export const accountApi = {
     }
   },
   async signup(account: any) {
-    try {
-      return await request<{ user: Record<string, string> }>("/users/signup", {
-        method: "POST",
-        body: JSON.stringify(account),
-      });
-    } catch (error) {
-      if (!isUnavailable(error)) throw error;
-      const accounts = readLocal<any>("clouddeployx-users");
-      if (accounts.some(item => item.username.toLowerCase() === account.username.toLowerCase())) {
-        throw new Error("This username is already used.");
-      }
-      if (accounts.some(item => item.email.toLowerCase() === account.email.toLowerCase())) {
-        throw new Error("This email is already used.");
-      }
-      writeLocal("clouddeployx-users", [...accounts, account]);
-      return { user: account };
-    }
+    return request<{ user: Record<string, string> }>("/users/signup", {
+      method: "POST",
+      body: JSON.stringify(account),
+    });
   },
   async login(identifier: string, passwordHash: string) {
     try {
@@ -166,42 +153,12 @@ export const teamApi = {
     }
   },
   async invite(member: any) {
-    const normalizedUsername = member.username.toLowerCase();
-    const normalizedEmail = member.email.toLowerCase();
-    const identities = readLocal<TeamIdentity>("clouddeployx-team-identities");
-    const localMembers = readLocal<any>("clouddeployx-team");
-    if (
-      identities.some(item => item.username === normalizedUsername)
-      || localMembers.some(item => item.username?.toLowerCase() === normalizedUsername)
-    ) {
-      throw new Error("This team username has already been used.");
-    }
-    if (
-      identities.some(item => item.email === normalizedEmail)
-      || localMembers.some(item => item.email?.toLowerCase() === normalizedEmail)
-    ) {
-      throw new Error("This team email has already been used.");
-    }
-    try {
-      const result = await request<{ member: Record<string, string> }>("/team", {
-        method: "POST",
-        body: JSON.stringify(member),
-      });
-      rememberTeamIdentity(member);
-      return result;
-    } catch (error) {
-      if (!isUnavailable(error)) throw error;
-      const members = readLocal<any>("clouddeployx-team");
-      if (members.some(item => item.username?.toLowerCase() === member.username.toLowerCase())) {
-        throw new Error("This team username is already used.");
-      }
-      if (members.some(item => item.email.toLowerCase() === member.email.toLowerCase())) {
-        throw new Error("This team email is already used.");
-      }
-      writeLocal("clouddeployx-team", [...members, member]);
-      rememberTeamIdentity(member);
-      return { member };
-    }
+    const result = await request<{ member: Record<string, string> }>("/team", {
+      method: "POST",
+      body: JSON.stringify(member),
+    });
+    rememberTeamIdentity(member);
+    return result;
   },
   async login(identifier: string, passwordHash: string) {
     try {
