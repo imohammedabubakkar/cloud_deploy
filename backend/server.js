@@ -82,10 +82,9 @@ const app = express();
 app.use((request, response, next) => {
   const startedAt = Date.now();
   const path = request.path;
-  log("info", `--> ${request.method} ${path}`);
   response.on("finish", () => {
     const level = response.statusCode >= 500 ? "error" : response.statusCode >= 400 ? "warn" : "info";
-    log(level, `<-- ${request.method} ${path} ${response.statusCode} (${Date.now() - startedAt}ms)`);
+    log(level, `[API] ${request.method} ${path} -> ${response.statusCode} (${Date.now() - startedAt}ms)`);
   });
   next();
 });
@@ -103,8 +102,10 @@ app.get("/api/health", async (_request, response, next) => {
   try {
     const database = await databasePromise;
     await database.command({ ping: 1 });
+    log("info", "💚 API health check passed (MongoDB ping OK).");
     response.json({ status: "ok", database: "mongodb" });
   } catch (error) {
+    log("error", "💔 API health check failed (MongoDB ping failed).");
     next(error);
   }
 });
