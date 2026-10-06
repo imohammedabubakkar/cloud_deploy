@@ -39,19 +39,22 @@ const databasePromise = client.connect().then(async () => {
 });
 
 const app = express();
+app.use((request, response, next) => {
+  const startedAt = Date.now();
+  const path = request.path;
+  log("info", `--> ${request.method} ${path}`);
+  response.on("finish", () => {
+    const level = response.statusCode >= 500 ? "error" : response.statusCode >= 400 ? "warn" : "info";
+    log(level, `<-- ${request.method} ${path} ${response.statusCode} (${Date.now() - startedAt}ms)`);
+  });
+  next();
+});
 app.use(cors({
   origin: process.env.CLIENT_ORIGIN
     ? process.env.CLIENT_ORIGIN.split(",").map(origin => origin.trim())
     : true,
 }));
 app.use(express.json({ limit: "1mb" }));
-app.use((request, response, next) => {
-  const startedAt = Date.now();
-  response.on("finish", () => {
-    log("info", `${request.method} ${request.path} ${response.statusCode} ${Date.now() - startedAt}ms`);
-  });
-  next();
-});
 
 const normalize = value => String(value || "").trim().toLowerCase();
 const withoutInternalFields = ({ _id, usernameNormalized, emailNormalized, passwordHash, ...record }) => record;
